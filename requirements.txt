@@ -1,0 +1,13 @@
+requests
+playwright
+selenium
+selenium-stealth
+fake-useragent
+scrapy
+scrapy-useragents
+rotating-proxies
+w3lib
+scrapingbee
+html2text
+websocket-client
+beautifulsoup4
