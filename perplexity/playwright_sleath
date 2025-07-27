@@ -1,0 +1,170 @@
+from playwright.sync_api import sync_playwright
+import random
+import time
+from datetime import datetime
+from urllib.parse import urlparse
+import os
+
+def get_random_user_agent():
+    agents = [
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/117.0"
+    ]
+    return random.choice(agents)
+
+def stealth_navigation(page):
+    """Human-like interaction patterns"""
+    for _ in range(random.randint(3, 7)):
+        page.mouse.move(
+            random.randint(0, 1200),
+            random.randint(0, 800)
+        )
+        time.sleep(random.uniform(0.1, 0.5))
+    
+    page.mouse.wheel(0, random.randint(200, 500))
+    time.sleep(random.uniform(0.5, 1.5))
+
+def save_to_markdown(data, url):
+    """Save scraped data to markdown file"""
+    domain = urlparse(url).netloc.replace('.', '_')
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"perplexity_{domain}_{timestamp}.md"
+    
+    with open(filename, 'w', encoding='utf-8') as f:
+        # Header
+        f.write(f"# {data.get('title', 'Perplexity AI Results')}\n\n")
+        f.write(f"**Source:** [{url}]({url})  \n")
+        f.write(f"**Date:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
+        
+        # Main Content
+        f.write("## Answer\n")
+        f.write(f"{data.get('main_answer', 'No content found')}\n\n")
+        
+        # Sources
+        if data.get('sources'):
+            f.write("## References\n")
+            for source in data['sources']:
+                f.write(f"- [{source.get('text', 'Link')}]({source.get('url', '#')})\n")
+            f.write("\n")
+        
+        # Related Questions
+        if data.get('related_questions'):
+            f.write("## Related Questions\n")
+            for question in data['related_questions']:
+                f.write(f"- {question}\n")
+    
+    print(f"✅ Saved to {os.path.abspath(filename)}")
+    return filename
+
+def scrape_shared_link(url):
+    with sync_playwright() as p:
+        # Configure stealth browser
+        browser = p.chromium.launch(
+            headless=False,
+            args=[
+                "--disable-blink-features=AutomationControlled",
+                f"--user-agent={get_random_user_agent()}",
+                "--start-maximized"
+            ]
+        )
+        
+        context = browser.new_context(
+            viewport={"width": random.randint(1000, 1400), "height": random.randint(800, 1000)},
+            locale="en-US",
+            timezone_id="America/New_York",
+            geolocation={"longitude": -74.006, "latitude": 40.7128},
+            permissions=[],
+            color_scheme="light"
+        )
+
+        # Stealth injections
+        context.add_init_script("""
+            delete navigator.webdriver;
+            window.chrome = {runtime: {}};
+            Object.defineProperty(navigator, 'plugins', {get: () => [1, 2, 3]});
+            Object.defineProperty(navigator, 'languages', {get: () => ['en-US', 'en']});
+        """)
+
+        page = context.new_page()
+        
+        try:
+            # Organic navigation pattern
+            if random.random() > 0.5:
+                page.goto("https://www.google.com/search?q=perplexity+ai", timeout=60000)
+                time.sleep(random.uniform(1, 3))
+            
+            # Main page load
+            page.goto(url, timeout=60000)
+            stealth_navigation(page)
+            
+            # Verify legitimate page load
+            if "perplexity.ai" not in page.url:
+                raise Exception(f"Redirect detected to {page.url}")
+            
+            # Extract content
+            result = {
+                "title": page.title(),
+                "main_answer": "",
+                "sources": [],
+                "related_questions": []
+            }
+
+            # Main content extraction
+            content_selectors = [
+                ".prose >> visible=true",
+                ".answer-content",
+                "[role='article']",
+                "xpath=//div[contains(@class, 'answer')]"
+            ]
+            
+            for selector in content_selectors:
+                try:
+                    result["main_answer"] = page.locator(selector).first.text_content()
+                    if result["main_answer"]: break
+                except:
+                    continue
+
+            # Sources extraction
+            result["sources"] = page.eval_on_selector_all(
+                ".sources a, a[rel='nofollow']", 
+                """elements => elements.map(el => ({
+                    text: el.innerText.trim(),
+                    url: el.href
+                }))"""
+            )
+
+            # Related questions
+            result["related_questions"] = page.eval_on_selector_all(
+                ".related-question, .related-questions li", 
+                "elements => elements.map(el => el.innerText.trim())"
+            )
+
+            # Save evidence
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            page.screenshot(path=f"perplexity_{timestamp}.png")
+            
+            # Save to Markdown
+            md_file = save_to_markdown(result, url)
+            return md_file
+
+        except Exception as e:
+            print(f"Error scraping {url}: {str(e)}")
+            page.screenshot(path="error.png")
+            return None
+
+        finally:
+            time.sleep(random.uniform(1, 3))
+            browser.close()
+
+if __name__ == "__main__":
+    # Example shared link
+    SHARED_LINK = "shared_link_1"  # Replace with actual URL
+
+    print(f"Scraping {SHARED_LINK}...")
+    output_file = scrape_shared_link(SHARED_LINK)
+    
+    if output_file:
+        print(f"Success! Results saved to:\n{os.path.abspath(output_file)}")
+    else:
+        print("Scraping failed")
